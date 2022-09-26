@@ -704,6 +704,7 @@ process show {
     """
     cp ${data} /home/scott/answer
     """
+}
 ```
 However, there is a big difference in the two uses of absolute paths. While it might be more appropriate or useful to pass the first path as a parameter, there is no real problem. Netflow will transparently stage the input files to the working directories as appropriate (generally using hard links). But the second hard-coded file will cause failures when we try to use Docker.
 
@@ -1025,47 +1026,59 @@ No problem if channels only ever have one value -- but when multiple values, may
 
 ```nextflow
 #!/usr/bin/env nextflow 
+nextflow.enable.dsl=2
 
-Channel.fromPath("data/*.dat").set { data }
+Channel.fromPath("/home/phelelani/*.dat").set { data }
 
 process P1 {
     input:
-    file(data)
+    path(data)
     
     output:
-    file  "${fbase}.pre" into channelA
-    file  data into channelB
+    path("${data.baseName}.pre"), emit: channelA
+    path(data), emit: channelB
 
-    script:
-    fbase=data.baseName
-    "echo dummy > ${fbase}.pre"
+    """
+    echo dummy > ${data.baseName}.pre
+    """
 }
 
 process P2 {
     input:
-    file pre from channelA
+    path(channelA)
     
     output:
-    file pre into channelC
+    path(channelA), emit: channelC
 
-    script:
-    if (pre.baseName == "a")
-        "sleep 4"
+    """
+    if [ ${channelA.baseName} = "a" ]
+    then
+        echo ${channelA.baseName}
+        sleep 4
     else
-        "sleep 1"
+        echo ${channelA.baseName}
+        sleep 1
+    fi
+    """
 }
 
 process P3 {
     echo true
     
     input:
-    file(data) from channelB
-    file(pre)  from channelC
+    path(channelB)
+    path(channelC)
 
     script:
     """
-    echo "${data} - $pre"
+    echo "${channelB} - ${channelC}"
     """
+}
+
+workflow {
+    P1(data)
+    P2(P1.out.channelA).view()
+    P3(P1.out.channelB, P2.out.channelC)
 }
 ```
 
@@ -1139,7 +1152,7 @@ process P3 {
     echo true
     
     input:
-    set file(pre), file(data) from channelB.join(channelC)
+    tuple path(pre), path(data) from channelB.join(channelC)
 
     script:
     """
@@ -1151,51 +1164,57 @@ This will not work. `ChannelA`, `ChannelB` and `ChannelC` all emmit single file.
 
 #### 6.4.1. Working version of the example
 ```nextflow
-#!/usr/bin/env nextflow
 
-Channel.fromPath("data/*.dat").set { data }
+#!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
 process P1 {
-    echo true
-    
     input:
-    file(data)
-
+    path(data)
+    
     output:
-    set val(data.baseName), file("${fbase}.pre") into channelA
-    set val(data.baseName), file(data) into channelB
-
-    script:
-    fbase=data.baseName
-    "echo dummy > ${fbase}.pre"
+    tuple val("${data.baseName}"), path("${data.baseName}.pre"), emit: channelA
+    tuple val("${data.baseName}"), path(data), emit: channelB
+    
+    """
+    echo dummy > ${data.baseName}.pre
+    """
 }
 
 process P2 {
-    echo true
-    
     input:
-    set name, file(pre) from channelA
-
+    tuple val(name), path(channelA)
+    
     output:
-    set name, file(pre) into channelC
+    tuple val("${channelA.baseName}"), path(channelA), emit: channelC
 
-    script:
-    if (pre.baseName = /.*TMP.*/)
-        "sleep 4"
+    """
+    if [ ${channelA.baseName} = "a" ]
+    then
+        echo ${channelA.baseName}
+        sleep 4
     else
-        "sleep 1"
+        echo ${channelA.baseName}
+        sleep 1
+    fi
+    """
 }
 
 process P3 {
     echo true
     
     input:
-    set name, file(data), file(pre) from channelB.join(channelC)
+    tuple val(name), path(channelB), path(channelC)
 
-    script:
     """
-    echo "${data} - ${pre}"
+    echo "${channelB} - ${channelC}"
     """
+}
+
+workflow {
+    P1(data)
+    P2(P1.out.channelA)
+    P3(P1.out.channelB.join(P2.out.channelC))
 }
 ```
 Now, regardless of how long a process `P2` takes to produce an output, process `P3` will only produce results once both `ChannelB` and `ChannelC` have matching items (the first item) in them.
@@ -1207,7 +1226,7 @@ process do {
     ...
 
     output:
-    file ("x.*") into out_ch
+    path("x.*") into out_ch
     ...
 }
 
