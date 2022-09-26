@@ -1,33 +1,37 @@
 #!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
-
-inp_channel = Channel.fromFilePairs("data/*dat", size: -1) \
-              { f -> ...... }
+inp_channel = Channel.fromFilePairs("data/*dat", size: -1) { f -> ...... }
 
 process pasteData {
-   input:
-      set val(key), file(data) from inp_channel
-   output:
-      file "${key}.res" into concat_ch 
-   publishDir ....
-   script:
-      " ... "
+    publishDir ....
+
+    input:
+    tuple val(key), path(data)
+
+    output:
+    path("${key}.res"), emit: concat_ch 
+
+    script:
+    " ... "
 }
-
-
-
 
 process concatData {
-   input:
-      file("*") from concat_ch.toList()
-   output:
-      ....
-   publishDir "output", overwrite:true, mode:'move'
-   script:
-      " .... "
+    publishDir "output", overwrite:true, mode:'move'
+
+    input:
+    path(concat_ch).toList()
+
+    output:
+    ....
+
+    script:
+    " .... "
 }
 
-
-output_ch.subscribe { print "$it\n" }
+workflow {
+    pasteData(...)
+    concatData(...).view()
+}
 
 

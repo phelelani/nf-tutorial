@@ -1,75 +1,73 @@
-#!/usr/bin/env nexflow
+#!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
-folder = file(params.data, type:'dir')
-
-input_ch = Channel.fromPath("${folder}/*.bim")
+data = file(params.data, type:'dir')
+input_ch = Channel.fromPath("${data}/*.bim")
 
 process getIDs {
-    publishDir 'clean_ids', mode: 'copy'
+    publishDir "clean_ids", mode: 'copy'
     
     input:
-    file(input) from input_ch
+    path(input_ch)
 
     output:
-    file("${input.baseName}") into id_ch
-    file(input) into orig_ch
+    path("${input_ch.baseName}"), emit: id_ch
+    path(input_ch), emit: orig_ch
   
     """
-    cut -f 2 $input | sort > ${input.baseName}
-
+    cut -f 2 ${input_ch} | sort > ${input_ch.baseName}
     """
-    
 }
 
-// orig_ch.subscribe { println "$it"}
-    
-
 process getDups {
-    publishDir 'clean_ids', mode: 'copy'
+    publishDir "clean_ids", mode: 'copy'
 
     input:
-    file input from id_ch
+    path(id_ch)
   
     output:
-    file "${input.baseName}.dups" into dups_ch
+    path("${id_ch.baseName}.dups"), emit: dups_ch
   
-    script:
     """
-    uniq -d $input > ${input.baseName}.dups
+    uniq -d ${id_ch} > ${id_ch.baseName}.dups
     touch ignore
     """
 }
 
 process removeDups {
-    publishDir 'clean_ids', mode: 'copy'
+    publishDir "clean_ids", mode: 'copy'
 
     input:
-    file badids from dups_ch
-    file orig from orig_ch
+    path(dups_ch)
+    path(orig_ch)
     
     output:
-    file "${orig.baseName}_clean.bim" into cleaned_ch
+    path("${orig_ch.baseName}_clean.bim"), emit: cleaned_ch
     
-    script:
-    "grep -v -f $badids $orig > ${orig.baseName}_clean.bim "
+    """
+    grep -v -f ${dups_ch} ${orig_ch} > ${orig_ch.baseName}_clean.bim
+    """
 }
-
-splits = [400,500,600]
 
 process splitIDs {
     publishDir 'split_files', mode: 'copy'
     
     input:
-    file(bim) from cleaned_ch
-    each split from splits
+    path(cleaned_ch)
+    each split
   
     output:
-    file ("*-$split-*") into output_ch;
+    path("*-${split}-*"), emit: output_ch
     
-    script:
-    "split -l $split $bim ${bim.baseName}-$split- "
+    """
+    split -l ${split} ${cleaned_ch} ${cleaned_ch.baseName}-$split-
+    """
 }
 
-output_ch.subscribe {
-    println "$it.baseName"
+workflow {
+    splits = [400,500,600]
+    getIDs(input_ch)
+    getDups(getIDs.out.id_ch)
+    removeDups(getDups.out.dups_ch, getIDs.out.orig_ch)
+    splitIDs(removeDups.out.cleaned_ch, splits).view()
 }

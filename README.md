@@ -83,7 +83,7 @@ cd $HOME/nf_tut
 
 Then, we download the data we will be using for the exercises:
 ```bash
-wget https://github.com/phelelani/nf-tut-2020/raw/master/files/data/tutorial.zip
+wget https://github.com/phelelani/nf-tutorial/raw/master/files/data/tutorial.zip
 unzip tutorial.zip
 ```
 Tyep `ls -l` and hit `<ENTER>` to view the contents of your directory. Your `nf_tut` directory will now contain Nextflow scripts (ending with `.nf`) and a `data` folder that we will use in this tutorial.
@@ -129,49 +129,55 @@ This is easy to do in `bash` - very simple example, not realistic for Nextflow
 
 **Solution - using Nextflow:**
 ```nextflow
-#!/usr/bin/env nexflow
+#!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
-input_ch = Channel.fromPath("data/11.bim")
+input_ch = Channel.fromPath("11.bim")
 
 process getIDs {
     input:
-    file input from input_ch
-
+    path(input_ch)
+    
     output:
-    file "ids" into id_ch
-    file "11.bim" into orig_ch
-  
-    script:
-    "cut -f 2 $input | sort > ids"
+    stdout emit: id_ch
+    path("11.bim"), emit: orig_ch
+
+    """
+    cut -f 2 ${input_ch} | sort
+    """
 }
 
 process getDups {
     input:
-    file input from id_ch
-  
+    stdin id_ch
+
     output:
-    file "dups" into dups_ch
-  
-    script:
+    stdout emit: dups_ch
+
     """
-    uniq -d $input > dups
+    uniq -d -
     touch ignore
     """
 }
 
 process removeDups {
     input:
-    file badids from dups_ch
-    file orig from orig_ch
-    
+    path(orig_ch)
+    stdin dups_ch
+
     output:
-    file "clean.bim" into output
-    
-    script:
-    "grep -v -f $badids $orig > clean.bim "
+    path("clean.bim"), emit: output
+
+    """
+    grep -v -f - ${orig_ch} > clean.bim
+    """
 }
 
-output.subscribe { print "Done!" }
+workflow {
+    getIDs(input_ch)
+    getDups(getIDs.out.id_ch)
+    removeDups(getIDs.out.orig_ch, getDups.out.dups_ch).subscribe { print "Done!" }
+}
 ```
 Using a text editor like `emacs` or `vim`, open the Nextflow script `cleandups.nf` and have a look at it.
 
@@ -389,50 +395,56 @@ count         min/max/sum   print/view
 #### 3.3.1. Multiple inputs
 ```nextflow
 #!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
 params.data_dir = "data"
 input_ch = Channel.fromPath("${params.data_dir}/*.bim")
 
 process getIDs {
     input:
-    file input from input_ch
-
+    path(input)
+    
     output:
-    file "${input.baseName}.ids" into id_ch
-    file "$input" into orig_ch
-
-    script:
-    "cut -f 2 $input | sort > ${input.baseName}.ids"
+    path("${input.baseName}.ids"), emit: id_ch
+    path("${input}"), emit: orig_ch
+    
+    """
+    cut -f 2 ${input} | sort > ${input.baseName}.ids
+    """
 }
 
 process getDups {
     input:
-    file input from id_ch
+    path(input)
 
     output:
-    file "${input.baseName}.dups" into dups_ch
+    path("${input.baseName}.dups"), emit: dups_ch
 
-    script:
-    out = "${input.baseName}.dups"
-    
     """
-    uniq -d $input > $out
+    uniq -d ${input} > "${input.baseName}.dups"
     touch ignore
     """
 }
 
 process removeDups {
-    publishDir "output", pattern: "${badids.baseName}_clean.bim", overwrite:true, mode:'copy'
-
+    publishDir "output", pattern: "${badids.baseName}.bim", overwrite:true, mode:'copy'
+    
     input:
-    file badids from dups_ch
-    file orig from orig_ch
+    path(badids)
+    path(orig)
 
     output:
-    file "${badids.baseName}_clean.bim" into cleaned_ch
+    path("${badids.baseName}_clean.bim"), emit: cleaned_ch
 
-    script:
-    "grep -v -f $badids $orig > ${badids.baseName}_clean.bim "
+    """
+    grep -v -f ${badids} ${orig} > ${badids.baseName}_clean.bim
+    """
+}
+
+workflow {
+    getIDs(input_ch)
+    getDups(getIDs.out.id_ch)
+    removeDups(getDups.out.dups_ch, getIDs.out.orig_ch)
 }
 ```
 Here the `getIDs` process will execute once, for each file found in the initial glob. On a machine with multiple cores, these would probably execute in parallel, and as we'll see later if you are running on the head node of a cluster, each could run as a separate job.
@@ -459,18 +471,25 @@ split -l 400 data.txt dataX
 will produce files `dataXaa`, `dataXab`, `dataXac` and so on...
 
 ```nextflow
-splits = [400,500,600]
-
-process splitIDs {
+process splitIDs  {
     input:
-    file bim from cleaned_ch
-    each split from splits
-  
+    path(bim)
+    each split
+
     output:
-    file ("*-$split-*") into output_ch;
-    
-    script:
-    "split -l $split $bim ${bim.baseName}-$split- "
+    path("*-$split-*"), emit: output_ch
+
+    """
+    split -l ${split} ${bim} ${bim.baseName}-$split-
+    """
+}
+
+workflow {
+    splits = [400,500,600]
+    getIDs(input_ch)
+    getDups(getIDs.out.id_ch)
+    removeDups(getDups.out.dups_ch, getIDs.out.orig_ch)
+    splitIDs(removeDups.out.cleaned_ch, splits).view()
 }
 ```
 Have a look at the modified Nextflow scrip [here](files/data/cleandups_channels.nf).
@@ -509,6 +528,7 @@ Similar to lambdas in `Python` and `Java`.
 #### 3.4.1. Version 1: `map`
 ```nextflow
 #!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
 params.dir = "data/pops/"
 dir = params.dir
