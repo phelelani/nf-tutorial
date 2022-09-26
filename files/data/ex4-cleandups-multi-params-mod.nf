@@ -46,6 +46,8 @@ process removeDups {
 }
 
 process splitIDs  {
+    publishDir 'split_files', mode: 'copy'
+    
     input:
     path(bim)
     each split

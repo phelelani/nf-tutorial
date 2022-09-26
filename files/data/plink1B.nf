@@ -7,7 +7,7 @@ nextflow.enable.dsl=2
  nextflow plink1B.nf --pops A,martian
 */
 
-data = "data"
+data = "data/pops"
 populations = params.pops.split(",")
 
 Channel.from(populations)

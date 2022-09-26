@@ -132,51 +132,51 @@ This is easy to do in `bash` - very simple example, not realistic for Nextflow
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-input_ch = Channel.fromPath("11.bim")
+input_ch = Channel.fromPath("data/11.bim")
 
 process getIDs {
     input:
     path(input_ch)
-    
-    output:
-    stdout emit: id_ch
-    path("11.bim"), emit: orig_ch
 
+    output:
+    path("ids"), emit: id_ch
+    path("11.bim"), emit: orig_ch
+  
     """
-    cut -f 2 ${input_ch} | sort
+    cut -f 2 ${input_ch} | sort > ids
     """
 }
 
 process getDups {
     input:
-    stdin id_ch
-
+    path(id_ch)
+  
     output:
-    stdout emit: dups_ch
-
+    path("dups"), emit: dups_ch
+  
     """
-    uniq -d -
+    uniq -d ${id_ch} > dups
     touch ignore
     """
 }
 
 process removeDups {
     input:
+    path(dups_ch)
     path(orig_ch)
-    stdin dups_ch
-
+    
     output:
     path("clean.bim"), emit: output
-
+    
     """
-    grep -v -f - ${orig_ch} > clean.bim
+    grep -v -f ${dups_ch} ${orig_ch} > clean.bim
     """
 }
 
 workflow {
     getIDs(input_ch)
     getDups(getIDs.out.id_ch)
-    removeDups(getIDs.out.orig_ch, getDups.out.dups_ch).subscribe { print "Done!" }
+    removeDups(getDups.out.dups_ch, getIDs.out.orig_ch).subscribe { print "Done!" }
 }
 ```
 Using a text editor like `emacs` or `vim`, open the Nextflow script `cleandups.nf` and have a look at it.
@@ -347,15 +347,15 @@ Extending the example:
 ### 3.1. Parameters
 Parameters can be specified in a Nextflow script file:
 ```nextflow
-input_ch = Channel.fromPath(params.data_dir)
+input_ch = Channel.fromPath(params.data)
 ```
 They can also be passed to the Nextflow command when executing a script:
 ```bash
-nextflow run phylo1.nf --data_dir data/polyseqs.fa
+nextflow run phylo1.nf --data data/polyseqs.fa
 ```
 During debugging you may want to specify default values:
 ```nextflow
-params.data_dir = 'data'
+params.data = 'data'
 ```
 If you run the Nextflow program without parameters, it will use this as a default value; if you give it parameters, the default value is replaced. Of course, as a matter of good practice, default values for parameters are really designed for real parameters of the process (like gap penalties in a multiple sequence alignment) rather than data files.
 
@@ -365,9 +365,10 @@ The double-dash parameters are user-defined and completely extensible -- they ar
 
 ### 3.2. [Channels](https://www.nextflow.io/docs/latest/channel.html)
 Nextflow channels support different data types:
-- `file`
-- `val`
-- `set`
+- `path`
+- `stdin`
+- `env`
+- `tuple`
 
 **NB:** `val` is the most generic -- could be a file name. But sending a file provides power since you can access Groovy's file handling capacity **and**, more importantly does staging of files
 
@@ -397,8 +398,8 @@ count         min/max/sum   print/view
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-params.data_dir = "data"
-input_ch = Channel.fromPath("${params.data_dir}/*.bim")
+params.data = "data"
+input_ch = Channel.fromPath("${params.data}/*.bim")
 
 process getIDs {
     input:
@@ -454,12 +455,16 @@ Here the `getIDs` process will execute once, for each file found in the initial 
 nextflow run cleandups.nf
 ```
 ```bash
-N E X T F L O W  ~  version 19.07.0
-Launching `cleanups.nf` [small_wozniak] - revision: f8696171b0
-executor >  local (3)
-[6c/1b5ca2] process > getIDs (1)     [100%] 1 of 1 ✔
-[74/7d0dc8] process > getDups (1)    [100%] 1 of 1 ✔
-[05/51ca59] process > removeDups (1) [100%] 1 of 1 ✔
+Launching `cleandups.nf` [distracted_hodgkin] - revision: 29fdb384a6
+[warm up] executor > local
+executor >  local (9)
+[1a/431eb7] process > getIDs     [100%] 3 of 3 ✔
+[cc/fc0aaa] process > getDups    [100%] 3 of 3 ✔
+[03/c31154] process > removeDups [100%] 3 of 3 ✔
+Completed at: 31-Jul-2019 10:26:23
+Duration    : 2s
+CPU hours   : (a few seconds)
+Succeeded   : 9
 ```
 Now I'm going to add a next step -- say we want to split the IDs into groups using `split` but try different values of splitting.
 
@@ -560,10 +565,10 @@ Now let's look at more realistic exammple. To try this example on your own compu
 ```nextflow
 process getFreq {
     input:
-    set file(bed), file(bim), file(fam) from plink_data
+    tuple path(bed), path(bim), path(fam)
     
     output:
-    file "${bed.baseName}.frq" into result
+    path("${bed.baseName}.frq"), emit: result
     
     """
     plink --bed $bed \
@@ -623,27 +628,28 @@ plink_data.subscribe { println "$it" }
 ```nextflow
 process checkData {
     input:
-    set pop, file(pl_files) from plink_data
+    tuple val(pop), path(pl_files)
     
     output:
-    file "${pl_files[0]}.frq" into result
+    path("${pl_files[0]}.frq"), emit: result
     
-    script:
-    base = pl_files[0].baseName
-    "plink --bfile $base --freq --out ${base}"
+    """
+    plink --bfile ${base} --freq --out ${pl_files[0]}.frq
+    """
 }
 ```
 *OR*
 ```nextflow
 process checkData {
     input:
-    set pop, file(pl_files) from plink_data
+    tuple val(pop), path(pl_files)
     
     output:
-    file "${pop}.frq" into result
+    path("${pop}.frq"), emit: result
     
-    script:
-    "plink --bfile $pop --freq  --out $pop"
+    """
+    plink --bfile $pop --freq  --out ${pop}
+    """
 }
 ```
 
