@@ -83,7 +83,7 @@ cd $HOME/nf_tut
 
 Then, we download the data we will be using for the exercises:
 ```bash
-wget https://github.com/phelelani/nf-tutorial/raw/master/files/data/tutorial.zip
+wget https://github.com/phelelani/nf-tutorial/raw/main/files/data/tutorial.zip
 unzip tutorial.zip
 ```
 Tyep `ls -l` and hit `<ENTER>` to view the contents of your directory. Your `nf_tut` directory will now contain Nextflow scripts (ending with `.nf`) and a `data` folder that we will use in this tutorial.
@@ -235,7 +235,7 @@ The names of the working directory are randomly chosen so if you run it, you wil
 - specify `stdin` if your process expects data to come from `stdin` rather than a named file. Nextflow will pipe the file to standard input;
 - specify `stdout` if your process produces data on `stdout` and you want that data to go into the `channel`
 
-**Exercise 2:** Change the script so that you use `stdin` or `stdout` in the `getIDs` and `getDups` processes to avoid the use of the temporary file `ids`. You can see the solution [here](files/data/cleandups.nf)
+**Exercise 2:** Change the script so that you use `stdin` or `stdout` in the `getIDs` and `getDups` processes to avoid the use of the temporary file `ids`. You can see the solution [here](files/data/ex2-cleandups-stdin.nf)
 
 ### 1.3. Partial Execution
 If execution of workflow is only partial (e.g., because of error), only need to resume from process that failed:
@@ -332,7 +332,7 @@ print doX({a->m*a+2}, [1,2,3])
 ```
 **NB:** You don't have to name the parameter -- if you don't name the parameter then the name `it` is assumed.
 
-**Exercise 3:** Look at the sample Groovy code [here](files/data/groovy.nf). Try to understand and execute on your machine.
+**Exercise 3:** Look at the sample Groovy code [here](files/data/ex3-groovy.nf). Try to understand and execute on your machine.
 
 ## 3. Generalising and Extending
 We'll now extend this example, introducing more powerful features of Nextflow as well as some of the complication of workflow design.
@@ -464,7 +464,7 @@ executor >  local (3)
 Now I'm going to add a next step -- say we want to split the IDs into groups using `split` but try different values of splitting.
 
 #### 3.3.2. Multiple parameters
-**Exercise 4:** Now try adding a process to our Nextflow example and for splitting the file but using different split values (SOLUTION [HERE](files/data/cleandups_inclass_example.nf)), e.g.:
+**Exercise 4:** Now try adding a process to our Nextflow example and for splitting the file but using different split values (solution [HERE](files/data/ex4-cleandups-multi-params.nf)), e.g.:
 ```bash
 split -l 400 data.txt dataX
 ```
@@ -492,7 +492,7 @@ workflow {
     splitIDs(removeDups.out.cleaned_ch, splits).view()
 }
 ```
-Have a look at the modified Nextflow scrip [here](files/data/cleandups_channels.nf).
+Have a look at the modified Nextflow scrip [here](files/data/ex4-cleandups-multi-params-mod.nf).
 
 ### 3.4. Managing Grouped Files
 We've seen so far where we have a stream of file being processed independently. But in many applications there may be matched data sets. We'll now look at an example, using a popular bioinformatics tool called `PLINK`. In its most common usages, `PLINK` takes in three related files, typically with the same but different suffixed: `.bed`, `.bim`, `.fam`.
@@ -674,7 +674,7 @@ process checkData {
 }
 ```
 
-**Exercise 5:** Have a look at [`weather.nf`](files/data/weather.nf). In the data directory are set of data files for different years and months. First, I want you to use `paste` to combine all the files for the same year and month (`paste` joins files horizontal-wise). Then these new files should be concated.
+**Exercise 5:** Have a look at [`ex5-weather.nf`](files/data/ex5-weather.nf). In the data directory are set of data files for different years and months. First, I want you to use `paste` to combine all the files for the same year and month (`paste` joins files horizontal-wise). Then these new files should be concated.
 
 ### 3.5. On absolute paths
 Great care needs to be taken when referring to absolute paths. Consider the following script. Assumming that local execution is being done, this should work.
@@ -804,9 +804,9 @@ Any absolute paths (other than those used in staging) will result in error.
   
 **A little more technical detail:** In the above example, the YRI.bim file is staged into the working directory on the Docker image. To achieve this, the directories `data` and `data/pop` are mounted on the Docker image. But no other sub-directories of `data` are available. But all the other files in `data/pops` are available!.
 
-**Exercise 6:** Have a look at [`dockersee.nf`](files/data/dockersee.nf) and run it like this:
+**Exercise 6:** Have a look at [`ex6-dockersee.nf`](files/data/ex6-dockersee.nf) and run it like this:
 ```bash
-nextflow run dockersee.nf -with-docker quay.io/banshee1221/h3agwas-plink
+nextflow run ex6-dockersee.nf -with-docker quay.io/banshee1221/h3agwas-plink
 ```
 
 ### 4.2. Docker/Singularity profiles
