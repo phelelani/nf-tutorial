@@ -656,6 +656,7 @@ process checkData {
 #### 3.4.3 Version 3: Final version
 ```nextflow
 #!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
 params.dir = "data/pops/"
 dir = params.dir
@@ -670,13 +671,18 @@ Channel
 
 process checkData {
     input:
-    set pop, file(pl_files) from plink_data
+    tuple val(pop), path(pl_files)
     
     output:
-    file "${pop}.frq" into result
+    path("${pop}.frq"), emit: result
     
-    script:
-    "plink --bfile $pop --freq  --out $pop"
+    """
+    plink --bfile $pop --freq  --out $pop
+    """
+}
+
+workflow {
+    checkData(plink_data).view()
 }
 ```
 
@@ -690,13 +696,14 @@ input = Channel.fromPath("/data/batch1/myfile.fa")
 
 process show {
     input:
-    file data from input
+    path(data)
         
     output:
-    file 'see.out'
+    path('see.out')
 
-    script:
-    cp $data /home/scott/answer
+    """
+    cp ${data} /home/scott/answer
+    """
 ```
 However, there is a big difference in the two uses of absolute paths. While it might be more appropriate or useful to pass the first path as a parameter, there is no real problem. Netflow will transparently stage the input files to the working directories as appropriate (generally using hard links). But the second hard-coded file will cause failures when we try to use Docker.
 
@@ -763,27 +770,32 @@ Nextflow Docker/Singularity support highly transparent -- but pay attention to g
 
 ```nextflow
 #!/usr/bin/env nextflow
+nextflow.enable.dsl=2
 
 data = Channel.fromPath("data/pops/YRI.bim")
 
 process see {
+    publishDir "count_out", overwrite:true, mode:'move'
     echo true
   
     input:
-    file bim from data
+    path(bim)
 
     output:
-    file count
-    publishDir params.publish, overwrite:true, mode:'move'
+    path(count)
     
     """
     hostname
     echo "Path is \$( pwd )\n "
     echo "Parent directory has \$( ls .. )\n"
     echo "My home directory has \$( ls /home/phele )\n"
-    wc -l $bim > count
+    wc -l ${bim} > count
     ls
     """
+}
+
+workflow {
+    see(data)
 }
 ```
 
